@@ -155,6 +155,7 @@ services:
 
   kafka:
     image: bitnami/kafka:3.7
+    restart: always
     hostname: kafka
     volumes:
       - kafka-data:/bitnami
@@ -207,7 +208,18 @@ services:
     volumes:
       - ./init_scripts/register-postgres.json:/register-postgres.json
     command: >
-      -X POST -H "Content-Type: application/json" --data @register-postgres.json http://kafka-connect:8083/connectors
+      -X POST -H "Content-Type: application/json" --data @register-postgres.json --retry-all-errors --connect-timeout 5 --max-time 10 --retry 10 --retry-delay 10 http://kafka-connect:8083/connectors
+
+  # Use this to debug kafka topics
+  # kafka-ui:
+  #   hostname: kafka-ui
+  #   image: provectuslabs/kafka-ui:v0.7.2
+  #   ports:
+  #     - "9010:8080"
+  #   environment:
+  #     KAFKA_CLUSTERS_0_NAME: local
+  #     KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+  #     DYNAMIC_CONFIG_ENABLED: 'true'
 
 volumes:
   pg-data:
