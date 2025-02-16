@@ -1,0 +1,14 @@
+{
+  "name": "mongodb-sink",
+  "config": {
+    "connector.class": "at.grahsl.kafka.connect.mongodb.MongoDbSinkConnector",
+    "tasks.max": "1",
+    "topics": "dbserver1.public.job_offer",
+    "mongodb.connection.uri": "mongodb://mongodb:27017/mydatabase?w=1&journal=true",
+    "mongodb.user": "mongo",
+    "mongodb.password": "mongo",
+    "mongodb.collection": "jobOffer",
+    "mongodb.document.id.strategy": "at.grahsl.kafka.connect.mongodb.processor.id.strategy.FullKeyStrategy",
+    "mongodb.delete.on.null.values": "true"
+  }
+}

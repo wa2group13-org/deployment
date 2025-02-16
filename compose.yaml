@@ -1,0 +1,214 @@
+services:
+  keycloak:
+    image: keycloak/keycloak:24.0
+    hostname: keycloak
+    ports:
+      - "127.0.0.1:9090:8080"
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    volumes:
+      - ./realm:/opt/keycloak/data/import
+    # Only do this for testing!
+    command: start-dev --import-realm
+    #command: start --optimized
+
+  # Used to access hostnames from the host machine
+  docker-hoster:
+    image: dvdarias/docker-hoster:latest
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+      - /etc/hosts:/tmp/hosts
+
+  crm-client:
+    image: wa2group13/crm-client:latest
+    #image: react-test2
+    ports:
+      - "5173:5173"
+    command: npm run dev
+
+  api-gateway:
+    image: wa2group13/api-gateway:latest
+    restart: always
+    ports: 
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      ISSUER_URI: http://keycloak:8080/realms/crm
+      CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
+      CLIENT_SECRET: ${KEYCLOAK_SECRET}
+      REDIRECT_URI: ${KEYCLOAK_REDIRECT_URI}
+      CURRENT_URI: http://localhost:8080
+      CRM_CLIENT_URI: http://crm-client:5173/
+      LOGOUT_REDIRECT_URL: http://localhost:8080
+      EUREKA_URI: http://eureka-server:8761/eureka
+    depends_on:
+      - kafka
+      - keycloak
+      - eureka-server
+
+  cm:
+    image: wa2group13/communication_manager:1.2.0
+    environment:
+      APPLICATION_NAME: ${APPLICATION_NAME}
+      CLIENT_ID: ${CLIENT_ID}
+      CLIENT_SECRET: ${CLIENT_SECRET}
+      REFRESH_TOKEN: ${REFRESH_TOKEN}
+      SPRING_PROFILES_ACTIVE: prod
+      KAFKA_PRODUCER_BOOTSTRAP_SERVERS: kafka:29092
+      JWT_ISSUER_URI: http://keycloak:8080/realms/crm
+      EUREKA_URI: http://eureka-server:8761/eureka
+      spring.application.name: communication-manager
+    depends_on:
+      - kafka
+      - keycloak
+      - eureka-server
+
+  crm:
+    image: wa2group13/crm:latest
+    environment:
+      POSTGRES_URL: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: crm
+      POSTGRES_USERNAME: ${CRM_POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${CRM_POSTGRES_PASSWORD}
+      SPRING_PROFILES_ACTIVE: prod
+      BASE_URL: ${BASE_URL}/crm
+      KAFKA_CONSUMER_BOOTSTRAP_SERVERS: kafka:29092
+      JWT_ISSUER_URI: http://keycloak:8080/realms/crm
+      EUREKA_URI: http://eureka-server:8761/eureka
+    depends_on:
+      - postgres
+      - kafka
+      - keycloak
+      - eureka-server
+
+  document-store:
+    image: wa2group13/document_store:latest
+    environment:
+      POSTGRES_URL: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${DS_POSTGRES_DB}
+      POSTGRES_USERNAME: ${DS_POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${DS_POSTGRES_PASSWORD}
+      SPRING_PROFILES_ACTIVE: prod
+      KAFKA_CONSUMER_BOOTSTRAP_SERVERS: kafka:29092
+      JWT_ISSUER_URI: http://keycloak:8080/realms/crm
+      MULTIPART_MAX_FILE_SIZE: 10MB
+      MULTIPART_MAX_REQUEST_SIZE: 10MB
+      spring.servlet.multipart.enabled: "true"
+      spring.http.multipart.enabled: "true"
+      EUREKA_URI: http://eureka-server:8761/eureka
+      spring.application.name: document-store
+    depends_on:
+      - postgres
+      - kafka
+      - keycloak
+      - eureka-server
+
+  crm-analytics:
+    image: wa2group13/crm-analytics:latest
+    environment:
+      MONGODB_HOST: mongodb
+      MONGODB_PORT: 27017
+      MONGODB_DATABASE: ${ANALYTICS_MONGODB_DATABASE}
+      MONGODB_USERNAME: ${ANALYTICS_MONGODB_USERNAME}
+      MONGODB_PASSWORD: ${ANALYTICS_MONGODB_PASSWORD}
+      SPRING_PROFILES_ACTIVE: prod
+      KAFKA_CONSUMER_BOOTSTRAP_SERVERS: kafka:29092
+      JWT_ISSUER_URI: http://keycloak:8080/realms/crm
+      spring.docker.compose.enabled: "false"
+      EUREKA_URI: http://eureka-server:8761/eureka
+    depends_on:
+      - mongodb
+      - kafka
+      - keycloak
+      - eureka-server
+
+  eureka-server:
+    image: wa2group13/eureka-server:1.0.0
+    hostname: eureka-server
+
+  mongodb:
+    image: mongo:8.0
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+    volumes:
+      - ./docker/mongo/setup.js:/docker-entrypoint-initdb.d/setup.js:ro
+
+  postgres:
+    image: postgres:16.2
+    hostname: postgres
+    environment:
+      POSTGRES_MULTIPLE_DB: ${POSTGRES_DBS}
+      POSTGRES_MULTIPLE_PASSWORD: ${POSTGRES_PASSWORDS}
+      POSTGRES_USER: ${POSTGRES_ADMIN}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      DEBEZIUM_DB: ${POSTGRES_DEBEZIUM_DB}
+      DEBEZIUM_PASSWORD: ${POSGRES_DEBEZIUM_PASSWORD}
+    volumes:
+      - ./init_scripts/init_database.sh:/docker-entrypoint-initdb.d/init_database.sh:ro
+      - pg-data:/var/lib/postgresql/data
+
+  kafka:
+    image: bitnami/kafka:3.7
+    hostname: kafka
+    volumes:
+      - kafka-data:/bitnami
+      - ./init_scripts/run-init-kafka-topics.sh:/docker-entrypoint-initdb.d/run-init-kafka-topics.sh:ro
+      - ./init_scripts/init-kafka-topics.sh:/init-kafka-topics.sh:ro
+    environment:
+      KAFKA_CFG_NODE_ID: 0
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:9093,PLAINTEXT_HOST://:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CFG_MESSAGE_MAX_BYTES: 10485760
+
+  kafka-connect:
+    image: quay.io/debezium/connect:3.0
+    hostname: kafka-connect
+    depends_on: [ kafka, postgres ]
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      STATUS_STORAGE_TOPIC: connect_statuses
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      ENABLE_DEBEZIUM_SCRIPTING: 'true'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'curl',
+          '--silent',
+          '--fail',
+          '-X',
+          'GET',
+          'http://localhost:8083/connectors',
+        ]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Create the configuration for the postgres connector.
+  kafka-connect-init:
+    image: alpine/curl:latest
+    depends_on: [kafka-connect]
+    volumes:
+      - ./init_scripts/register-postgres.json:/register-postgres.json
+    command: >
+      -X POST -H "Content-Type: application/json" --data @register-postgres.json http://kafka-connect:8083/connectors
+
+volumes:
+  pg-data:
+  kafka-data:
+
