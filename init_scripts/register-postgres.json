@@ -12,6 +12,6 @@
     "database.server.name": "postgres",
     "topic.prefix": "dbserver1",
     "schema.include.list": "public",
-    "table.include.list": "public.job_offer,public.job_offer_skills,public.contact,public.professional,public.customer,public.message"
+    "table.include.list": "public.job_offer,public.contact,public.professional,public.customer,public.message"
   }
 }

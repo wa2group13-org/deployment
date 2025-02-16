@@ -119,6 +119,7 @@ services:
       JWT_ISSUER_URI: http://keycloak:8080/realms/crm
       spring.docker.compose.enabled: "false"
       EUREKA_URI: http://eureka-server:8761/eureka
+      spring.application.name: crm-analytics
     depends_on:
       - mongodb
       - kafka
